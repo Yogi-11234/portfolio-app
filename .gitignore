@@ -1,0 +1,28 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Storage uploads (except gitkeep)
+storage/uploads/*
+!storage/uploads/.gitkeep
+
+# Go binaries and cache
+apps/api/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Node modules & build
+node_modules/
+apps/web/node_modules/
+apps/web/dist/
+dist/
+.DS_Store
+Thumbs.db
+
+# Logs & temp
+*.log
+tmp/

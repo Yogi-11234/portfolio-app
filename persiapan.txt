@@ -1,0 +1,200 @@
+-- 1. USERS (Admin Auth)
+CREATE TABLE users (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    avatar_url VARCHAR(255) NULL,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL
+);
+
+-- 2. PROFILE / SETTINGS (Hero & Bio Data)
+CREATE TABLE profile (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    full_name VARCHAR(255) NOT NULL,
+    tagline VARCHAR(255) NOT NULL,
+    bio TEXT NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    github_url VARCHAR(255) NULL,
+    gitlab_url VARCHAR(255) NULL,
+    linkedin_url VARCHAR(255) NULL,
+    resume_pdf_path VARCHAR(255) NULL,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL
+);
+
+-- 3. CATEGORIES (Kategori Proyek & Blog)
+CREATE TABLE categories (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) NOT NULL UNIQUE,
+    type ENUM('project', 'post') NOT NULL,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL
+);
+
+-- 4. PROJECTS (Portofolio Karya)
+CREATE TABLE projects (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    category_id BIGINT NULL,
+    title VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) NOT NULL UNIQUE,
+    thumbnail VARCHAR(255) NOT NULL,
+    short_description TEXT NOT NULL,
+    full_description LONGTEXT NOT NULL,
+    demo_url VARCHAR(255) NULL,
+    repo_url VARCHAR(255) NULL,
+    featured BOOLEAN DEFAULT FALSE,
+    status ENUM('draft', 'published') DEFAULT 'draft',
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL,
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+);
+
+-- 5. SKILLS (Tech Stack)
+CREATE TABLE skills (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    category ENUM('backend', 'frontend', 'database', 'tools') NOT NULL,
+    icon_svg_or_class VARCHAR(255) NULL,
+    order_num INT DEFAULT 0,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL
+);
+
+-- 6. PROJECT_SKILLS (Pivot Table Many-to-Many)
+CREATE TABLE project_skills (
+    project_id BIGINT NOT NULL,
+    skill_id BIGINT NOT NULL,
+    PRIMARY KEY (project_id, skill_id),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+);
+
+-- 7. EXPERIENCES (Kerja, Magang, Edukasi)
+CREATE TABLE experiences (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    company_or_client VARCHAR(255) NOT NULL,
+    role VARCHAR(255) NOT NULL,
+    type ENUM('fulltime', 'freelance', 'internship', 'education') NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NULL, -- NULL kalau masih berjalan (Present)
+    description TEXT NOT NULL,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL
+);
+
+-- 8. CERTIFICATES (Sertifikat & Lisensi)
+CREATE TABLE certificates (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    experience_id BIGINT NULL, -- Opsional: kalau sertifikat nempel ke riwayat magang/kerja
+    title VARCHAR(255) NOT NULL,
+    issuer VARCHAR(255) NOT NULL,
+    credential_id VARCHAR(255) NULL,
+    credential_url VARCHAR(255) NULL,
+    file_path VARCHAR(255) NULL, -- Path file PDF/Gambar di storage
+    issue_date DATE NOT NULL,
+    expiration_date DATE NULL, -- NULL kalau seumur hidup
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL,
+    FOREIGN KEY (experience_id) REFERENCES experiences(id) ON DELETE SET NULL
+);
+
+-- 9. POSTS (Blog / Artikel Teknis)
+CREATE TABLE posts (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    category_id BIGINT NULL,
+    title VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) NOT NULL UNIQUE,
+    thumbnail VARCHAR(255) NULL,
+    content LONGTEXT NOT NULL,
+    status ENUM('draft', 'published') DEFAULT 'draft',
+    published_at DATETIME NULL,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL,
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+);
+
+-- 10. MESSAGES (Inbox Form Kontak)
+CREATE TABLE messages (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    sender_name VARCHAR(255) NOT NULL,
+    sender_email VARCHAR(255) NOT NULL,
+    subject VARCHAR(255) NULL,
+    message TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL
+);
+
+
+Act as a Senior Software Architect and Technical Product Manager.
+
+I am planning to build my personal IT Developer Portfolio Website with an integrated CMS using Appwrite Cloud (Free Tier) as the BaaS, Go (Golang) for Serverless Functions, PostgreSQL (via Appwrite DB), and Vue 3 / React + Tailwind CSS (Shadcn/ui) for the Frontend. 
+
+I will use "Antigravity" (an AI Agent Coding Assistant) to generate and construct the entire codebase. Therefore, the PRD must be written in a structured, actionable, unambiguous, and strict format optimized for AI agents to parse and execute step-by-step.
+
+Please generate a comprehensive Product Requirement Document (PRD) based on the detailed architecture and specifications below:
+
+---
+
+### PROJECT OVERVIEW
+- Purpose: Personal IT Portfolio & Custom CMS for Content Management.
+- Primary Stack: 
+  - BaaS / DB / Auth / Storage: Appwrite Cloud (Free Tier)
+  - Backend Logic / Functions: Go (Golang 1.22+)
+  - Frontend: Vue 3 / React (Vite) + Tailwind CSS + Shadcn/ui
+  - Orchestration & Execution Tool: Antigravity AI Agent
+
+---
+
+### CORE ARCHITECTURE & INFRASTRUCTURE CONSTRAINTS
+1. Appwrite Limits Compliance:
+   - Max 1 Database (`portfolio_db`).
+   - Max 2 Go Serverless Functions (`contact-handler`, `image-optimizer`).
+   - Max 1 Storage Bucket (`portfolio_assets`, capped at 2GB).
+   - Minimal payload footprint to stay well under 5GB monthly bandwidth.
+
+2. Database Schema (Appwrite Collections):
+   - `users`: Admin Auth references.
+   - `profile`: Single-row system settings, bio, hero text, socials, CV path.
+   - `categories`: Project & post categories (Type: project/post).
+   - `projects`: Title, slug, thumbnail, short/full description, demo_url, repo_url, featured flag, status (draft/published).
+   - `skills`: Tech stack name, category (backend/frontend/database/tools), icon class/svg, order.
+   - `project_skills`: Pivot tracking skills used in each project.
+   - `experiences`: Work, internship, education history.
+   - `certificates`: Title, issuer, credential_id, credential_url, file_path (PDF/image), issue_date, expiration_date, FK to experiences.
+   - `posts`: Technical blog articles (Markdown support).
+   - `messages`: Contact form entries (sender_name, sender_email, subject, message, is_read).
+
+3. Appwrite Storage Bucket:
+   - Name: `portfolio_assets`
+   - Allowed Mime Types: image/jpeg, image/png, image/webp, application/pdf.
+   - File Size Limit: Max 2MB per upload.
+
+---
+
+### STRICT SECURITY REQUIREMENTS
+1. Role-Based Access Control (RBAC):
+   - Public Access (`Any`): Read-only access for `projects`, `skills`, `certificates`, `experiences`, `posts` (status = published), and `profile`.
+   - Admin Access (`User: Admin ID`): Full CRUD permissions on all collections and buckets.
+   - Public Write Access: Allowed ONLY for creating documents in `messages` collection (sandboxed, read-restricted).
+2. Environment Variables & Secret Handling:
+   - Public client SDK MUST ONLY use `APPWRITE_ENDPOINT` and `PROJECT_ID`.
+   - Secret API Keys with elevated admin privileges MUST NEVER be exposed to the frontend build and must reside solely inside Appwrite Go Functions.
+3. Form Defense & Rate Limiting:
+   - Contact form handler (Go Function) must implement IP-based rate limiting (max 3 submissions per 10 minutes) and input sanitization (XSS prevention) before persisting data to `messages`.
+
+---
+
+### PRD SECTION REQUIREMENTS
+Please structure the PRD with the following chapters:
+1. Executive Summary & Tech Stack Matrix.
+2. Complete Database Schema Specification (Collection attributes, data types, indexes, and Appwrite Permission definitions).
+3. Go Serverless Functions Specification (Input DTOs, logic flow, rate limiter implementation, and error handling).
+4. Frontend Architecture & Routing Tree (Public Pages + Protected `/admin` CMS Dashboard Routes).
+5. Step-by-Step Implementation Roadmap tailored for Antigravity AI Agent (Phase 1: DB & Storage Setup, Phase 2: Go Functions, Phase 3: Frontend Slicing & SDK Integration, Phase 4: Admin CMS Dashboard, Phase 5: Security & Audit Checklist).
+6. Non-Functional Requirements (Performance, WebP image conversion, Bundle size optimization).
+
+Please write the PRD in clear, professional English with markdown formatting, exact field types, and technical precision so Antigravity can read it and start scaffolding code immediately.

@@ -1,0 +1,17 @@
+{
+  "name": "portfolio-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:api": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-api.ps1",
+    "dev:web": "npm run dev --prefix apps/web",
+    "build": "powershell -ExecutionPolicy Bypass -File ./scripts/build.ps1",
+    "build:api": "powershell -ExecutionPolicy Bypass -File ./scripts/build.ps1",
+    "build:web": "npm run build --prefix apps/web",
+    "test": "powershell -ExecutionPolicy Bypass -File ./scripts/test.ps1",
+    "test:api": "powershell -ExecutionPolicy Bypass -File ./scripts/test.ps1",
+    "migrate:up": "powershell -ExecutionPolicy Bypass -File ./scripts/migrate.ps1 up",
+    "migrate:down": "powershell -ExecutionPolicy Bypass -File ./scripts/migrate.ps1 down",
+    "seed": "powershell -ExecutionPolicy Bypass -File ./scripts/seed.ps1"
+  }
+}
