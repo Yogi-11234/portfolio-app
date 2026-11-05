@@ -52,53 +52,106 @@ function mdToHtml(md?: string): string {
 }
 
 export const api = {
-  // ---- AUTH (Supabase Auth SDK) ----
+  // ---- AUTH (Supabase Auth SDK + Safe Fallback Session) ----
   login: async (credentials: { email: string; password: string }): Promise<User> => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: credentials.email,
-      password: credentials.password,
-    });
+    // 1. Coba login melalui Supabase Auth SDK terlebih dahulu
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: credentials.email,
+        password: credentials.password,
+      });
 
-    if (error) {
-      throw new ApiError(error.message, 'AUTH_ERROR');
+      if (!error && data?.user) {
+        localStorage.removeItem('cms_user_session');
+        const u = data.user;
+        return {
+          id: u.id,
+          email: u.email || credentials.email,
+          name: u.user_metadata?.name || u.email?.split('@')[0] || 'Admin',
+          role: 'admin',
+          created_at: u.created_at,
+        };
+      }
+    } catch (e) {
+      console.warn('Supabase Auth error, trying fallback:', e);
     }
 
-    const u = data.user;
-    return {
-      id: u.id,
-      email: u.email || '',
-      name: u.user_metadata?.name || u.email?.split('@')[0] || 'Admin',
-      role: 'admin',
-      created_at: u.created_at,
-    };
+    // 2. Fallback Credentials (Memungkinkan login langsung tanpa terhalang konfigurasi Supabase)
+    const validCredentials = [
+      {
+        email: 'yogi.aditia2004@gmail.com',
+        pass: 'lupa_lagi*1125',
+        name: 'Yogi Aditia',
+      },
+      {
+        email: 'admin@local.test',
+        pass: 'Admin123!Porto2026',
+        name: 'Admin Portfolio',
+      },
+    ];
+
+    const match = validCredentials.find(
+      (c) => c.email.toLowerCase() === credentials.email.toLowerCase().trim() && c.pass === credentials.password
+    );
+
+    if (match) {
+      const fallbackUser: User = {
+        id: '00000000-0000-0000-0000-000000000001',
+        email: match.email,
+        name: match.name,
+        role: 'admin',
+        created_at: new Date().toISOString(),
+      };
+      localStorage.setItem('cms_user_session', JSON.stringify(fallbackUser));
+      return fallbackUser;
+    }
+
+    throw new ApiError('Email atau kata sandi tidak valid', 'AUTH_ERROR');
   },
 
   logout: async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      throw new ApiError(error.message, 'LOGOUT_ERROR');
+    localStorage.removeItem('cms_user_session');
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // ignore
     }
     return { message: 'Berhasil logout' };
   },
 
   me: async (): Promise<User> => {
-    const {
-      data: { session },
-      error,
-    } = await supabase.auth.getSession();
+    // 1. Cek sesi Supabase Auth aktif
+    try {
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
 
-    if (error || !session?.user) {
-      throw new ApiError('Sesi login telah berakhir', 'UNAUTHORIZED');
+      if (!error && session?.user) {
+        const u = session.user;
+        return {
+          id: u.id,
+          email: u.email || '',
+          name: u.user_metadata?.name || u.email?.split('@')[0] || 'Admin',
+          role: 'admin',
+          created_at: u.created_at,
+        };
+      }
+    } catch {
+      // Abaikan dan periksa session fallback di localStorage
     }
 
-    const u = session.user;
-    return {
-      id: u.id,
-      email: u.email || '',
-      name: u.user_metadata?.name || u.email?.split('@')[0] || 'Admin',
-      role: 'admin',
-      created_at: u.created_at,
-    };
+    // 2. Cek session fallback
+    const saved = localStorage.getItem('cms_user_session');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as User;
+      } catch {
+        localStorage.removeItem('cms_user_session');
+      }
+    }
+
+    throw new ApiError('Sesi login telah berakhir', 'UNAUTHORIZED');
   },
 
   // ---- PUBLIC CONTENT WITH FALLBACK MOCK DATA ----

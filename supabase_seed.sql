@@ -1,5 +1,5 @@
 -- ==============================================================================
--- SUPABASE SEED SCRIPT FOR PORTFOLIO
+-- SUPABASE SEED SCRIPT FOR PORTFOLIO & CMS AUTH
 -- Jalankan skrip ini langsung di Supabase SQL Editor (Dashboard -> SQL Editor -> New Query)
 -- ==============================================================================
 
@@ -7,19 +7,83 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS citext;
 
--- 2. USERS (Admin / Author)
-INSERT INTO users (id, email, password_hash, name, role)
+-- 2. AUTH USERS (Supabase Auth System)
+-- Menambahkan akun admin di skema internal auth.users Supabase agar bisa login via Supabase Auth SDK
+-- Email: yogi.aditia2004@gmail.com | Password: lupa_lagi*1125
+INSERT INTO auth.users (
+    instance_id,
+    id,
+    aud,
+    role,
+    email,
+    encrypted_password,
+    email_confirmed_at,
+    raw_app_meta_data,
+    raw_user_meta_data,
+    created_at,
+    updated_at,
+    confirmation_token,
+    email_change,
+    email_change_token_new,
+    recovery_token
+)
+VALUES (
+    '00000000-0000-0000-0000-000000000000',
+    '00000000-0000-0000-0000-000000000001',
+    'authenticated',
+    'authenticated',
+    'yogi.aditia2004@gmail.com',
+    crypt('lupa_lagi*1125', gen_salt('bf')),
+    now(),
+    '{"provider":"email","providers":["email"]}',
+    '{"name":"Yogi Aditia"}',
+    now(),
+    now(),
+    '',
+    '',
+    '',
+    ''
+)
+ON CONFLICT (id) DO UPDATE
+SET encrypted_password = crypt('lupa_lagi*1125', gen_salt('bf')),
+    email_confirmed_at = now();
+
+-- Identitas Auth untuk provider email
+INSERT INTO auth.identities (
+    id,
+    user_id,
+    identity_data,
+    provider,
+    provider_id,
+    last_sign_in_at,
+    created_at,
+    updated_at
+)
+VALUES (
+    '00000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000001',
+    format('{"sub":"%s","email":"%s"}', '00000000-0000-0000-0000-000000000001', 'yogi.aditia2004@gmail.com')::jsonb,
+    'email',
+    '00000000-0000-0000-0000-000000000001',
+    now(),
+    now(),
+    now()
+)
+ON CONFLICT (provider, provider_id) DO NOTHING;
+
+-- 3. PUBLIC USERS (Relasi foreign key ke profile & posts)
+INSERT INTO public.users (id, email, password_hash, name, role)
 VALUES (
     '00000000-0000-0000-0000-000000000001',
     'yogi.aditia2004@gmail.com',
-    '$argon2id$v=19$m=65536,t=3,p=4$vPq4eC8yT0Y9wZ12345678$mockhashedpasswordforyogiaditia2026',
+    crypt('lupa_lagi*1125', gen_salt('bf')),
     'Yogi Aditia',
     'admin'
 )
 ON CONFLICT (email) DO UPDATE
 SET name = EXCLUDED.name;
 
--- 3. PROFILE
+-- 4. PROFILE
 INSERT INTO profile (
     id,
     user_id,
@@ -60,7 +124,7 @@ SET full_name = EXCLUDED.full_name,
     social_links = EXCLUDED.social_links,
     open_to_work = EXCLUDED.open_to_work;
 
--- 4. CATEGORIES
+-- 5. CATEGORIES
 INSERT INTO categories (id, name, slug, type, sort_order)
 VALUES
     ('10000000-0000-0000-0000-000000000001', 'AI & Machine Learning', 'ai-ml', 'project', 1),
@@ -72,7 +136,7 @@ ON CONFLICT (type, slug) DO UPDATE
 SET name = EXCLUDED.name,
     sort_order = EXCLUDED.sort_order;
 
--- 5. SKILLS
+-- 6. SKILLS
 INSERT INTO skills (id, name, slug, group_name, icon_key, brand_color, level, is_visible, sort_order)
 VALUES
     ('20000000-0000-0000-0000-000000000001', 'Go (Golang)', 'golang', 'language', 'go', '#00ADD8', 5, true, 1),
@@ -100,7 +164,7 @@ SET name = EXCLUDED.name,
     is_visible = EXCLUDED.is_visible,
     sort_order = EXCLUDED.sort_order;
 
--- 6. PROJECTS
+-- 7. PROJECTS
 INSERT INTO projects (
     id,
     category_id,
@@ -192,7 +256,7 @@ SET title = EXCLUDED.title,
     is_featured = EXCLUDED.is_featured,
     sort_order = EXCLUDED.sort_order;
 
--- 7. PROJECT_SKILLS (Pivot)
+-- 8. PROJECT_SKILLS (Pivot)
 INSERT INTO project_skills (project_id, skill_id)
 VALUES
     ('30000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000002'), -- Python
@@ -207,7 +271,7 @@ VALUES
     ('30000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000011')  -- Supabase
 ON CONFLICT (project_id, skill_id) DO NOTHING;
 
--- 8. EXPERIENCES
+-- 9. EXPERIENCES
 INSERT INTO experiences (
     id,
     type,
@@ -277,7 +341,7 @@ SET organization = EXCLUDED.organization,
     is_visible = EXCLUDED.is_visible,
     sort_order = EXCLUDED.sort_order;
 
--- 9. CERTIFICATES
+-- 10. CERTIFICATES
 INSERT INTO certificates (
     id,
     title,
@@ -331,7 +395,7 @@ SET title = EXCLUDED.title,
     is_visible = EXCLUDED.is_visible,
     sort_order = EXCLUDED.sort_order;
 
--- 10. POSTS
+-- 11. POSTS
 INSERT INTO posts (
     id,
     author_id,
