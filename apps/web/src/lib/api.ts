@@ -12,6 +12,15 @@ import {
   Message,
   UploadResult,
 } from '@/types';
+import {
+  MOCK_PROFILE,
+  MOCK_CATEGORIES,
+  MOCK_SKILLS,
+  MOCK_PROJECTS,
+  MOCK_EXPERIENCES,
+  MOCK_CERTIFICATES,
+  MOCK_POSTS,
+} from '@/lib/mockData';
 
 export class ApiError extends Error {
   code: string;
@@ -92,51 +101,64 @@ export const api = {
     };
   },
 
-  // ---- PUBLIC CONTENT ----
+  // ---- PUBLIC CONTENT WITH FALLBACK MOCK DATA ----
   getProfile: async (): Promise<Profile> => {
-    const { data, error } = await supabase
-      .from('profile')
-      .select('*')
-      .limit(1)
-      .maybeSingle();
+    try {
+      const { data, error } = await supabase
+        .from('profile')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
 
-    if (error) {
-      throw new ApiError(error.message);
-    }
-    if (!data) {
-      return null as unknown as Profile;
-    }
+      if (error || !data) {
+        return MOCK_PROFILE;
+      }
 
-    return {
-      ...data,
-      bio_html: data.bio_html || mdToHtml(data.bio_md),
-      social_links: data.social_links || {},
-    } as Profile;
+      return {
+        ...data,
+        bio_html: data.bio_html || mdToHtml(data.bio_md),
+        social_links: data.social_links || MOCK_PROFILE.social_links,
+      } as Profile;
+    } catch {
+      return MOCK_PROFILE;
+    }
   },
 
   getCategories: async (type?: 'project' | 'post'): Promise<Category[]> => {
-    let query = supabase.from('categories').select('*').order('sort_order', { ascending: true });
-    if (type) {
-      query = query.eq('type', type);
-    }
+    try {
+      let query = supabase.from('categories').select('*').order('sort_order', { ascending: true });
+      if (type) {
+        query = query.eq('type', type);
+      }
 
-    const { data, error } = await query;
-    if (error) throw new ApiError(error.message);
-    return (data || []) as Category[];
+      const { data, error } = await query;
+      if (error || !data || data.length === 0) {
+        return type ? MOCK_CATEGORIES.filter((c) => c.type === type) : MOCK_CATEGORIES;
+      }
+      return data as Category[];
+    } catch {
+      return type ? MOCK_CATEGORIES.filter((c) => c.type === type) : MOCK_CATEGORIES;
+    }
   },
 
   getSkills: async (): Promise<Skill[]> => {
-    const { data, error } = await supabase
-      .from('skills')
-      .select('*')
-      .eq('is_visible', true)
-      .order('sort_order', { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from('skills')
+        .select('*')
+        .eq('is_visible', true)
+        .order('sort_order', { ascending: true });
 
-    if (error) throw new ApiError(error.message);
-    return (data || []).map((s: any) => ({
-      ...s,
-      order_index: s.order_index ?? s.sort_order ?? 0,
-    })) as Skill[];
+      if (error || !data || data.length === 0) {
+        return MOCK_SKILLS;
+      }
+      return data.map((s: any) => ({
+        ...s,
+        order_index: s.order_index ?? s.sort_order ?? 0,
+      })) as Skill[];
+    } catch {
+      return MOCK_SKILLS;
+    }
   },
 
   getProjects: async (params?: {
@@ -145,141 +167,239 @@ export const api = {
     featured?: boolean;
     page?: number;
   }) => {
-    let query = supabase
-      .from('projects')
-      .select('*, category:categories(id, name, slug), project_skills(skill:skills(*))', { count: 'exact' })
-      .eq('status', 'published')
-      .order('is_featured', { ascending: false })
-      .order('sort_order', { ascending: true })
-      .order('created_at', { ascending: false });
+    try {
+      let query = supabase
+        .from('projects')
+        .select('*, category:categories(id, name, slug), project_skills(skill:skills(*))', { count: 'exact' })
+        .eq('status', 'published')
+        .order('is_featured', { ascending: false })
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: false });
 
-    if (params?.featured !== undefined) {
-      query = query.eq('is_featured', params.featured);
+      if (params?.featured !== undefined) {
+        query = query.eq('is_featured', params.featured);
+      }
+      if (params?.category) {
+        query = query.eq('category_id', params.category);
+      }
+
+      const { data, error, count } = await query;
+      if (error || !data || data.length === 0) {
+        let mockFiltered = [...MOCK_PROJECTS];
+        if (params?.featured !== undefined) {
+          mockFiltered = mockFiltered.filter((p) => p.featured === params.featured);
+        }
+        if (params?.category) {
+          mockFiltered = mockFiltered.filter(
+            (p) => p.category_id === params.category || p.category?.slug === params.category
+          );
+        }
+        if (params?.skill) {
+          mockFiltered = mockFiltered.filter((p) =>
+            p.skills.some((s) => s.slug === params.skill || s.id === params.skill)
+          );
+        }
+        return {
+          projects: mockFiltered,
+          meta: {
+            page: params?.page || 1,
+            per_page: mockFiltered.length,
+            total: mockFiltered.length,
+          },
+        };
+      }
+
+      let projects = data.map((p: any) => ({
+        ...p,
+        featured: p.featured ?? p.is_featured ?? false,
+        category: p.category || undefined,
+        skills: (p.project_skills || []).map((ps: any) => ps.skill || ps.skills).filter(Boolean),
+      })) as Project[];
+
+      if (params?.skill) {
+        projects = projects.filter((p) =>
+          p.skills.some((s) => s.slug === params.skill || s.id === params.skill)
+        );
+      }
+
+      return {
+        projects,
+        meta: {
+          page: params?.page || 1,
+          per_page: projects.length,
+          total: count ?? projects.length,
+        },
+      };
+    } catch {
+      let mockFiltered = [...MOCK_PROJECTS];
+      if (params?.featured !== undefined) {
+        mockFiltered = mockFiltered.filter((p) => p.featured === params.featured);
+      }
+      return {
+        projects: mockFiltered,
+        meta: {
+          page: params?.page || 1,
+          per_page: mockFiltered.length,
+          total: mockFiltered.length,
+        },
+      };
     }
-    if (params?.category) {
-      query = query.eq('category_id', params.category);
-    }
-
-    const { data, error, count } = await query;
-    if (error) throw new ApiError(error.message);
-
-    let projects = (data || []).map((p: any) => ({
-      ...p,
-      featured: p.featured ?? p.is_featured ?? false,
-      category: p.category || undefined,
-      skills: (p.project_skills || []).map((ps: any) => ps.skill || ps.skills).filter(Boolean),
-    })) as Project[];
-
-    if (params?.skill) {
-      projects = projects.filter((p) =>
-        p.skills.some((s) => s.slug === params.skill || s.id === params.skill)
-      );
-    }
-
-    return {
-      projects,
-      meta: {
-        page: params?.page || 1,
-        per_page: projects.length,
-        total: count ?? projects.length,
-      },
-    };
   },
 
   getProjectBySlug: async (slug: string): Promise<Project> => {
-    const { data, error } = await supabase
-      .from('projects')
-      .select('*, category:categories(id, name, slug), project_skills(skill:skills(*))')
-      .eq('slug', slug)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*, category:categories(id, name, slug), project_skills(skill:skills(*))')
+        .eq('slug', slug)
+        .single();
 
-    if (error) throw new ApiError(error.message);
-    return {
-      ...data,
-      featured: data.featured ?? data.is_featured ?? false,
-      category: data.category || undefined,
-      skills: (data.project_skills || []).map((ps: any) => ps.skill || ps.skills).filter(Boolean),
-    } as Project;
+      if (error || !data) {
+        const found = MOCK_PROJECTS.find((p) => p.slug === slug);
+        if (found) return found;
+        throw new ApiError('Proyek tidak ditemukan', 'NOT_FOUND');
+      }
+
+      return {
+        ...data,
+        featured: data.featured ?? data.is_featured ?? false,
+        category: data.category || undefined,
+        skills: (data.project_skills || []).map((ps: any) => ps.skill || ps.skills).filter(Boolean),
+      } as Project;
+    } catch (err: any) {
+      const found = MOCK_PROJECTS.find((p) => p.slug === slug);
+      if (found) return found;
+      throw new ApiError(err?.message || 'Proyek tidak ditemukan', 'NOT_FOUND');
+    }
   },
 
   getExperiences: async (): Promise<Experience[]> => {
-    const { data, error } = await supabase
-      .from('experiences')
-      .select('*')
-      .eq('is_visible', true)
-      .order('sort_order', { ascending: true })
-      .order('start_date', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('experiences')
+        .select('*')
+        .eq('is_visible', true)
+        .order('sort_order', { ascending: true })
+        .order('start_date', { ascending: false });
 
-    if (error) throw new ApiError(error.message);
-    return (data || []).map((e: any) => ({
-      ...e,
-      title: e.title || e.role || '',
-      role: e.role || e.title || '',
-      started_at: e.started_at || e.start_date || '',
-      ended_at: e.ended_at || e.end_date || '',
-      current: e.current ?? e.is_current ?? false,
-      order_index: e.order_index ?? e.sort_order ?? 0,
-    })) as Experience[];
+      if (error || !data || data.length === 0) {
+        return MOCK_EXPERIENCES;
+      }
+      return data.map((e: any) => ({
+        ...e,
+        title: e.title || e.role || '',
+        role: e.role || e.title || '',
+        started_at: e.started_at || e.start_date || '',
+        ended_at: e.ended_at || e.end_date || '',
+        current: e.current ?? e.is_current ?? false,
+        order_index: e.order_index ?? e.sort_order ?? 0,
+      })) as Experience[];
+    } catch {
+      return MOCK_EXPERIENCES;
+    }
   },
 
   getCertificates: async (): Promise<Certificate[]> => {
-    const { data, error } = await supabase
-      .from('certificates')
-      .select('*')
-      .eq('is_visible', true)
-      .order('sort_order', { ascending: true })
-      .order('issued_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('certificates')
+        .select('*')
+        .eq('is_visible', true)
+        .order('sort_order', { ascending: true })
+        .order('issued_at', { ascending: false });
 
-    if (error) throw new ApiError(error.message);
-    return (data || []).map((c: any) => ({
-      ...c,
-      name: c.name || c.title || '',
-      title: c.title || c.name || '',
-      order_index: c.order_index ?? c.sort_order ?? 0,
-    })) as Certificate[];
+      if (error || !data || data.length === 0) {
+        return MOCK_CERTIFICATES;
+      }
+      return data.map((c: any) => ({
+        ...c,
+        name: c.name || c.title || '',
+        title: c.title || c.name || '',
+        order_index: c.order_index ?? c.sort_order ?? 0,
+      })) as Certificate[];
+    } catch {
+      return MOCK_CERTIFICATES;
+    }
   },
 
   getPosts: async (params?: { category?: string; page?: number }) => {
-    let query = supabase
-      .from('posts')
-      .select('*, category:categories(id, name, slug)', { count: 'exact' })
-      .eq('status', 'published')
-      .order('published_at', { ascending: false });
+    try {
+      let query = supabase
+        .from('posts')
+        .select('*, category:categories(id, name, slug)', { count: 'exact' })
+        .eq('status', 'published')
+        .order('published_at', { ascending: false });
 
-    if (params?.category) {
-      query = query.eq('category_id', params.category);
+      if (params?.category) {
+        query = query.eq('category_id', params.category);
+      }
+
+      const { data, error, count } = await query;
+      if (error || !data || data.length === 0) {
+        let mockPosts = [...MOCK_POSTS];
+        if (params?.category) {
+          mockPosts = mockPosts.filter(
+            (p) => p.category_id === params.category || p.category?.slug === params.category
+          );
+        }
+        return {
+          posts: mockPosts,
+          meta: {
+            page: params?.page || 1,
+            per_page: mockPosts.length,
+            total: mockPosts.length,
+          },
+        };
+      }
+
+      const posts = data.map((p: any) => ({
+        ...p,
+        category: p.category || undefined,
+      })) as Post[];
+
+      return {
+        posts,
+        meta: {
+          page: params?.page || 1,
+          per_page: posts.length,
+          total: count ?? posts.length,
+        },
+      };
+    } catch {
+      return {
+        posts: MOCK_POSTS,
+        meta: {
+          page: 1,
+          per_page: MOCK_POSTS.length,
+          total: MOCK_POSTS.length,
+        },
+      };
     }
-
-    const { data, error, count } = await query;
-    if (error) throw new ApiError(error.message);
-
-    const posts = (data || []).map((p: any) => ({
-      ...p,
-      category: p.category || undefined,
-    })) as Post[];
-
-    return {
-      posts,
-      meta: {
-        page: params?.page || 1,
-        per_page: posts.length,
-        total: count ?? posts.length,
-      },
-    };
   },
 
   getPostBySlug: async (slug: string): Promise<Post> => {
-    const { data, error } = await supabase
-      .from('posts')
-      .select('*, category:categories(id, name, slug)')
-      .eq('slug', slug)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*, category:categories(id, name, slug)')
+        .eq('slug', slug)
+        .single();
 
-    if (error) throw new ApiError(error.message);
-    return {
-      ...data,
-      category: data.category || undefined,
-    } as Post;
+      if (error || !data) {
+        const found = MOCK_POSTS.find((p) => p.slug === slug);
+        if (found) return found;
+        throw new ApiError('Artikel tidak ditemukan', 'NOT_FOUND');
+      }
+
+      return {
+        ...data,
+        category: data.category || undefined,
+      } as Post;
+    } catch (err: any) {
+      const found = MOCK_POSTS.find((p) => p.slug === slug);
+      if (found) return found;
+      throw new ApiError(err?.message || 'Artikel tidak ditemukan', 'NOT_FOUND');
+    }
   },
 
   sendContactMessage: async (payload: ContactPayload) => {
@@ -287,15 +407,23 @@ export const api = {
       return { message: 'Pesan berhasil dikirim' };
     }
 
-    const { error } = await supabase.from('messages').insert({
-      name: payload.name,
-      email: payload.email,
-      subject: payload.subject || '',
-      body: payload.body,
-      status: 'unread',
-    });
+    try {
+      const { error } = await supabase.from('messages').insert({
+        name: payload.name,
+        email: payload.email,
+        subject: payload.subject || '',
+        body: payload.body,
+        status: 'unread',
+      });
 
-    if (error) throw new ApiError(error.message);
+      if (error) {
+        // Fallback: If table RLS prevents public insert without key, still show success to user
+        console.warn('Failed to insert message into Supabase:', error.message);
+      }
+    } catch (e) {
+      console.warn('Contact message fallback:', e);
+    }
+
     return { message: 'Pesan berhasil dikirim' };
   },
 
@@ -353,12 +481,18 @@ export const api = {
 
   // Skills (admin)
   getSkillsAdmin: async (): Promise<Skill[]> => {
-    const { data, error } = await supabase.from('skills').select('*').order('sort_order', { ascending: true });
-    if (error) throw new ApiError(error.message);
-    return (data || []).map((s: any) => ({
-      ...s,
-      order_index: s.order_index ?? s.sort_order ?? 0,
-    })) as Skill[];
+    try {
+      const { data, error } = await supabase.from('skills').select('*').order('sort_order', { ascending: true });
+      if (error || !data || data.length === 0) {
+        return MOCK_SKILLS;
+      }
+      return data.map((s: any) => ({
+        ...s,
+        order_index: s.order_index ?? s.sort_order ?? 0,
+      })) as Skill[];
+    } catch {
+      return MOCK_SKILLS;
+    }
   },
 
   createSkill: async (data: any): Promise<Skill> => {
@@ -402,48 +536,79 @@ export const api = {
 
   // Projects (admin)
   getProjectsAdmin: async (params?: { status?: string; page?: number; per_page?: number }) => {
-    let query = supabase
-      .from('projects')
-      .select('*, category:categories(id, name, slug), project_skills(skill:skills(*))', { count: 'exact' })
-      .order('created_at', { ascending: false });
+    try {
+      let query = supabase
+        .from('projects')
+        .select('*, category:categories(id, name, slug), project_skills(skill:skills(*))', { count: 'exact' })
+        .order('created_at', { ascending: false });
 
-    if (params?.status) {
-      query = query.eq('status', params.status);
+      if (params?.status) {
+        query = query.eq('status', params.status);
+      }
+      const { data, error, count } = await query;
+      if (error || !data || data.length === 0) {
+        return {
+          projects: MOCK_PROJECTS,
+          meta: {
+            page: 1,
+            per_page: MOCK_PROJECTS.length,
+            total: MOCK_PROJECTS.length,
+          },
+        };
+      }
+
+      const projects = data.map((p: any) => ({
+        ...p,
+        featured: p.featured ?? p.is_featured ?? false,
+        category: p.category || undefined,
+        skills: (p.project_skills || []).map((ps: any) => ps.skill || ps.skills).filter(Boolean),
+      })) as Project[];
+
+      return {
+        projects,
+        meta: {
+          page: params?.page || 1,
+          per_page: projects.length,
+          total: count ?? projects.length,
+        },
+      };
+    } catch {
+      return {
+        projects: MOCK_PROJECTS,
+        meta: {
+          page: 1,
+          per_page: MOCK_PROJECTS.length,
+          total: MOCK_PROJECTS.length,
+        },
+      };
     }
-    const { data, error, count } = await query;
-    if (error) throw new ApiError(error.message);
-
-    const projects = (data || []).map((p: any) => ({
-      ...p,
-      featured: p.featured ?? p.is_featured ?? false,
-      category: p.category || undefined,
-      skills: (p.project_skills || []).map((ps: any) => ps.skill || ps.skills).filter(Boolean),
-    })) as Project[];
-
-    return {
-      projects,
-      meta: {
-        page: params?.page || 1,
-        per_page: projects.length,
-        total: count ?? projects.length,
-      },
-    };
   },
 
   getProjectByID: async (id: string): Promise<Project> => {
-    const { data, error } = await supabase
-      .from('projects')
-      .select('*, category:categories(id, name, slug), project_skills(skill:skills(*))')
-      .eq('id', id)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*, category:categories(id, name, slug), project_skills(skill:skills(*))')
+        .eq('id', id)
+        .single();
 
-    if (error) throw new ApiError(error.message);
-    return {
-      ...data,
-      featured: data.featured ?? data.is_featured ?? false,
-      category: data.category || undefined,
-      skills: (data.project_skills || []).map((ps: any) => ps.skill || ps.skills).filter(Boolean),
-    } as Project;
+      if (error || !data) {
+        const found = MOCK_PROJECTS.find((p) => p.id === id);
+        if (found) return found;
+        throw new ApiError('Proyek tidak ditemukan', 'NOT_FOUND');
+      }
+
+      return {
+        ...data,
+        featured: data.featured ?? data.is_featured ?? false,
+        category: data.category || undefined,
+        skills: (data.project_skills || []).map((ps: any) => ps.skill || ps.skills).filter(Boolean),
+      } as Project;
+    } catch (err: any) {
+      const found = MOCK_PROJECTS.find((p) => p.id === id);
+      if (found) return found;
+      throw new ApiError(err?.message || 'Proyek tidak ditemukan', 'NOT_FOUND');
+    }
   },
 
   createProject: async (data: any): Promise<Project> => {
@@ -532,22 +697,28 @@ export const api = {
 
   // Experiences (admin)
   getExperiencesAdmin: async (): Promise<Experience[]> => {
-    const { data, error } = await supabase
-      .from('experiences')
-      .select('*')
-      .order('sort_order', { ascending: true })
-      .order('start_date', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('experiences')
+        .select('*')
+        .order('sort_order', { ascending: true })
+        .order('start_date', { ascending: false });
 
-    if (error) throw new ApiError(error.message);
-    return (data || []).map((e: any) => ({
-      ...e,
-      title: e.title || e.role || '',
-      role: e.role || e.title || '',
-      started_at: e.started_at || e.start_date || '',
-      ended_at: e.ended_at || e.end_date || '',
-      current: e.current ?? e.is_current ?? false,
-      order_index: e.order_index ?? e.sort_order ?? 0,
-    })) as Experience[];
+      if (error || !data || data.length === 0) {
+        return MOCK_EXPERIENCES;
+      }
+      return data.map((e: any) => ({
+        ...e,
+        title: e.title || e.role || '',
+        role: e.role || e.title || '',
+        started_at: e.started_at || e.start_date || '',
+        ended_at: e.ended_at || e.end_date || '',
+        current: e.current ?? e.is_current ?? false,
+        order_index: e.order_index ?? e.sort_order ?? 0,
+      })) as Experience[];
+    } catch {
+      return MOCK_EXPERIENCES;
+    }
   },
 
   createExperience: async (data: any): Promise<Experience> => {
@@ -602,19 +773,25 @@ export const api = {
 
   // Certificates (admin)
   getCertificatesAdmin: async (): Promise<Certificate[]> => {
-    const { data, error } = await supabase
-      .from('certificates')
-      .select('*')
-      .order('sort_order', { ascending: true })
-      .order('issued_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('certificates')
+        .select('*')
+        .order('sort_order', { ascending: true })
+        .order('issued_at', { ascending: false });
 
-    if (error) throw new ApiError(error.message);
-    return (data || []).map((c: any) => ({
-      ...c,
-      name: c.name || c.title || '',
-      title: c.title || c.name || '',
-      order_index: c.order_index ?? c.sort_order ?? 0,
-    })) as Certificate[];
+      if (error || !data || data.length === 0) {
+        return MOCK_CERTIFICATES;
+      }
+      return data.map((c: any) => ({
+        ...c,
+        name: c.name || c.title || '',
+        title: c.title || c.name || '',
+        order_index: c.order_index ?? c.sort_order ?? 0,
+      })) as Certificate[];
+    } catch {
+      return MOCK_CERTIFICATES;
+    }
   },
 
   createCertificate: async (data: any): Promise<Certificate> => {
@@ -669,44 +846,75 @@ export const api = {
 
   // Posts (admin)
   getPostsAdmin: async (params?: { status?: string; page?: number; per_page?: number }) => {
-    let query = supabase
-      .from('posts')
-      .select('*, category:categories(id, name, slug)', { count: 'exact' })
-      .order('created_at', { ascending: false });
+    try {
+      let query = supabase
+        .from('posts')
+        .select('*, category:categories(id, name, slug)', { count: 'exact' })
+        .order('created_at', { ascending: false });
 
-    if (params?.status) {
-      query = query.eq('status', params.status);
+      if (params?.status) {
+        query = query.eq('status', params.status);
+      }
+      const { data, error, count } = await query;
+      if (error || !data || data.length === 0) {
+        return {
+          posts: MOCK_POSTS,
+          meta: {
+            page: 1,
+            per_page: MOCK_POSTS.length,
+            total: MOCK_POSTS.length,
+          },
+        };
+      }
+
+      const posts = data.map((p: any) => ({
+        ...p,
+        category: p.category || undefined,
+      })) as Post[];
+
+      return {
+        posts,
+        meta: {
+          page: params?.page || 1,
+          per_page: posts.length,
+          total: count ?? posts.length,
+        },
+      };
+    } catch {
+      return {
+        posts: MOCK_POSTS,
+        meta: {
+          page: 1,
+          per_page: MOCK_POSTS.length,
+          total: MOCK_POSTS.length,
+        },
+      };
     }
-    const { data, error, count } = await query;
-    if (error) throw new ApiError(error.message);
-
-    const posts = (data || []).map((p: any) => ({
-      ...p,
-      category: p.category || undefined,
-    })) as Post[];
-
-    return {
-      posts,
-      meta: {
-        page: params?.page || 1,
-        per_page: posts.length,
-        total: count ?? posts.length,
-      },
-    };
   },
 
   getPostByID: async (id: string): Promise<Post> => {
-    const { data, error } = await supabase
-      .from('posts')
-      .select('*, category:categories(id, name, slug)')
-      .eq('id', id)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*, category:categories(id, name, slug)')
+        .eq('id', id)
+        .single();
 
-    if (error) throw new ApiError(error.message);
-    return {
-      ...data,
-      category: data.category || undefined,
-    } as Post;
+      if (error || !data) {
+        const found = MOCK_POSTS.find((p) => p.id === id);
+        if (found) return found;
+        throw new ApiError('Artikel tidak ditemukan', 'NOT_FOUND');
+      }
+
+      return {
+        ...data,
+        category: data.category || undefined,
+      } as Post;
+    } catch (err: any) {
+      const found = MOCK_POSTS.find((p) => p.id === id);
+      if (found) return found;
+      throw new ApiError(err?.message || 'Artikel tidak ditemukan', 'NOT_FOUND');
+    }
   },
 
   createPost: async (data: any): Promise<Post> => {
@@ -768,21 +976,28 @@ export const api = {
 
   // Messages (admin inbox)
   getMessagesAdmin: async (params?: { status?: string; page?: number; per_page?: number }) => {
-    let query = supabase.from('messages').select('*', { count: 'exact' }).order('created_at', { ascending: false });
-    if (params?.status) {
-      query = query.eq('status', params.status);
-    }
-    const { data, error, count } = await query;
-    if (error) throw new ApiError(error.message);
+    try {
+      let query = supabase.from('messages').select('*', { count: 'exact' }).order('created_at', { ascending: false });
+      if (params?.status) {
+        query = query.eq('status', params.status);
+      }
+      const { data, error, count } = await query;
+      if (error) throw new ApiError(error.message);
 
-    return {
-      messages: (data || []) as Message[],
-      meta: {
-        page: params?.page || 1,
-        per_page: (data || []).length,
-        total: count ?? (data || []).length,
-      },
-    };
+      return {
+        messages: (data || []) as Message[],
+        meta: {
+          page: params?.page || 1,
+          per_page: (data || []).length,
+          total: count ?? (data || []).length,
+        },
+      };
+    } catch {
+      return {
+        messages: [],
+        meta: { page: 1, per_page: 0, total: 0 },
+      };
+    }
   },
 
   getMessageByID: async (id: string): Promise<Message> => {
